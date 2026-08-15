@@ -1,4 +1,4 @@
-# PenFlow-
+# PenFlow
 Generate realistic handwritten assignments and study notes.
 #Plan
 AI Handwriting-Style Notes Creator – Complete Project Plan
