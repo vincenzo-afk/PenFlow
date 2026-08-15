@@ -16,3 +16,12 @@
 - [x] Add browser-detected MP4/WebM recording export with supported-format feedback.
 - [x] Validate preview and export interactions across desktop and mobile, then document the release.
 - [x] Checkpoint and push the completed feature set to GitHub.
+
+## Multi-page Reels and Profile Comparison
+
+- [x] Extend replay inputs and timing to render ordered page sessions as one timeline.
+- [x] Add a multi-page reel export flow with visual page transitions, pacing, progress, and supported video formats.
+- [x] Build local profile comparison cards with side-by-side visual samples and a clear applied state.
+- [x] Add selection and explicit apply actions for a chosen comparison profile.
+- [x] Validate reel export and profile comparison on desktop and mobile, then document the release.
+- [x] Checkpoint and push the completed feature set to GitHub.

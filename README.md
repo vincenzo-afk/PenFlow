@@ -17,6 +17,8 @@ PenFlow is a browser-first handwriting notes studio. It converts your source tex
 | **Local writing calibration** | Capture a guided handwritten sample and derive a reusable visual writing profile from pressure, pace, slant, scale, spacing, baseline drift, and tremor. The profile updates PenFlow’s editable appearance controls without uploading the sample. |
 | **Live profile proof** | Shows the generated visual writing profile on a reference sheet while the user is still writing the sample. The sheet is unchanged until the user explicitly applies the preview; profiles may also be saved without applying them. |
 | **Replay sharing** | Turns the active page’s saved direct-ink timeline into a shareable animated GIF. Where the browser provides `MediaRecorder` support, it can also export a local MP4 or WebM replay and explains the available format in the interface. |
+| **Multi-page session reels** | Combines every inked sheet in a multi-page note into a continuous local GIF or browser-supported MP4/WebM reel. Page transitions, pacing, resolution, progress, and device-only downloads make longer handwriting sessions ready to share. |
+| **Profile comparison proofs** | Shows up to four local writing profiles as side-by-side paper proofs. Selecting a card only marks it for review; applying a profile remains a separate, explicit action. |
 | **Writing profiles** | Apply built-in writing identities or save local custom pen-and-paper profiles for later pages. Appearance history supports Undo and Redo. |
 | **Study shaping** | Restructures imported or pasted material into concise headings and revision bullets directly in the browser. |
 | **OCR import** | Reads JPG and PNG page scans using Tesseract.js in the browser. Text and Markdown files can also be imported. |
@@ -47,6 +49,6 @@ PenFlow is a React 19 + TypeScript + Vite application. The visual page is drawn 
 
 ## Privacy note
 
-Writing, study shaping, preview generation, local-library storage, calibration, and replay exports remain in the browser. OCR processes selected images in the browser through Tesseract.js. Replay media is created from the active sheet’s direct-ink strokes only and is downloaded to the device; it is not uploaded by PenFlow.
+Writing, study shaping, preview generation, local-library storage, calibration, and replay exports remain in the browser. OCR processes selected images in the browser through Tesseract.js. Replay media is rendered from locally stored direct-ink strokes and downloaded to the device; it is not uploaded by PenFlow. A session reel requires ink on at least two distinct pages and orders those inked pages by notebook page number.
 
 > **Calibration scope:** PenFlow derives an editable *visual writing profile* from the motion and pressure traits in a voluntary sample. It does not identify a person, create a biometric identity, or claim to reproduce exact personal letterforms.
