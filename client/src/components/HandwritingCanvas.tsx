@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import type { RefObject } from "react";
 import { DEFAULT_APPEARANCE, mergeAppearance, type DocumentAppearance, type HandwritingStyle, type PaperKind, type TextMark } from "@/lib/appearance";
+import { drawStroke, type InkStroke } from "@/lib/drawing";
 
 export type { HandwritingStyle, PaperKind } from "@/lib/appearance";
 export type InkColor = "indigo" | "black" | "vermilion" | "forest";
@@ -14,6 +15,7 @@ type HandwritingCanvasProps = {
   title: string;
   appearance?: DocumentAppearance;
   marks?: TextMark[];
+  drawings?: Record<number, InkStroke[]>;
   pageIndex?: number;
   canvasRef: RefObject<HTMLCanvasElement | null>;
   onPageCount?: (count: number) => void;
@@ -27,7 +29,7 @@ type HandwritingCanvasProps = {
 
 type RandomState = { value: number };
 type DisplayLine = { content: string; kind: "heading" | "body" | "bullet" | "spacer"; indent: number };
-type RenderInput = { text: string; title: string; appearance: DocumentAppearance; marks: TextMark[] };
+type RenderInput = { text: string; title: string; appearance: DocumentAppearance; marks: TextMark[]; drawings?: Record<number, InkStroke[]> };
 
 const PAGE_WIDTH = 760;
 const PAGE_HEIGHT = 1074;
@@ -204,7 +206,7 @@ function renderPage(canvas: HTMLCanvasElement, lines: DisplayLine[], pageNumber:
   const date=new Intl.DateTimeFormat("en",{month:"short",day:"numeric",year:"numeric"}).format(new Date());ctx.fillStyle="rgba(27,36,50,.56)";ctx.font="600 11px 'DM Mono',monospace";ctx.fillText(date.toUpperCase(),109,50);ctx.textAlign="right";ctx.fillText(`PENFLOW / ${String(pageNumber+1).padStart(2,"0")}`,PAGE_WIDTH-56,50);ctx.textAlign="left";
   const appearance=input.appearance;const style=appearance.handwriting.style;const family=familyFor(style);const titleFont=style==="blueprint"||style==="caps"?"600 22px 'DM Mono',monospace":"600 29px 'Kalam',cursive";ctx.font=titleFont;ctx.fillStyle=appearance.pen.color;ctx.fillText(pageNumber?`${input.title} — continued`:input.title||"Untitled note",109,93);ctx.strokeStyle="rgba(216,74,56,.55)";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(109,102);ctx.lineTo(PAGE_WIDTH-58,102);ctx.stroke();
   let y=145;const baseSize=appearance.handwriting.size;const baseHeight=baseSize*appearance.handwriting.lineHeight;for(let index=0;index<lines.length;index+=1){const line=lines[index];if(line.kind==="spacer"){y+=baseHeight*.55;continue;}const size=line.kind==="heading"?baseSize+5:baseSize;ctx.font=`${line.kind==="heading"?"600":"400"} ${size}px ${family}`;const left=appearance.paper.margin==="left"?109:75;let x=left+line.indent;const content=normalizeContent(line.content,appearance.handwriting.capitals);for(let charIndex=0;charIndex<content.length;charIndex+=1){const char=content.charAt(charIndex);const charWidth=ctx.measureText(char).width;if(char===" "){x+=charWidth*(.9+appearance.handwriting.wordSpacing*.12+(random(rng)-.5)*.11);}else{writeCharacter(ctx,char,x,y,size,appearance,rng);x+=charWidth*(.92+appearance.handwriting.letterSpacing*.035+(random(rng)-.5)*(appearance.humanize.enabled&&!appearance.humanize.cleanView?appearance.humanize.amount*.09:.02));}}for(let markIndex=0;markIndex<input.marks.length;markIndex+=1)drawMark(ctx,{...line,content},left+line.indent,y,size,input.marks[markIndex],appearance,rng);y+=baseHeight+(line.kind==="heading"?9:0);}
-  drawCorrections(ctx,appearance,rng,pageNumber);ctx.save();ctx.fillStyle="rgba(27,36,50,.4)";ctx.font="10px 'DM Mono',monospace";ctx.fillText("PENFLOW / MADE FOR REVISION",109,PAGE_HEIGHT-38);ctx.textAlign="right";ctx.fillText(`${pageNumber+1} / ${total}`,PAGE_WIDTH-56,PAGE_HEIGHT-38);ctx.restore();
+  drawCorrections(ctx,appearance,rng,pageNumber);for(const stroke of input.drawings?.[pageNumber]??[])drawStroke(ctx,stroke);ctx.save();ctx.fillStyle="rgba(27,36,50,.4)";ctx.font="10px 'DM Mono',monospace";ctx.fillText("PENFLOW / MADE FOR REVISION",109,PAGE_HEIGHT-38);ctx.textAlign="right";ctx.fillText(`${pageNumber+1} / ${total}`,PAGE_WIDTH-56,PAGE_HEIGHT-38);ctx.restore();
 }
 
 export function createDocumentCanvases(input: RenderInput) {
@@ -212,9 +214,9 @@ export function createDocumentCanvases(input: RenderInput) {
 }
 
 export function HandwritingCanvas(props: HandwritingCanvasProps) {
-  const { canvasRef, text, title, marks = [], pageIndex = 0, onPageCount } = props; const appearance = props.appearance ?? legacyAppearance(props);
+  const { canvasRef, text, title, marks = [], drawings = {}, pageIndex = 0, onPageCount } = props; const appearance = props.appearance ?? legacyAppearance(props);
   const [fontsReady, setFontsReady] = useState(false);
   useEffect(() => { let active = true; document.fonts?.ready.then(() => { if (active) setFontsReady(true); }); return () => { active = false; }; }, []);
-  useEffect(()=>{const preview=canvasRef.current;if(!preview)return;const canvases=createDocumentCanvases({text,title,appearance,marks});const selected=canvases[Math.min(pageIndex,canvases.length-1)];if(!selected)return;preview.width=selected.width;preview.height=selected.height;preview.style.aspectRatio=selected.style.aspectRatio;const context=preview.getContext("2d");if(!context)return;context.drawImage(selected,0,0);onPageCount?.(canvases.length);},[appearance,canvasRef,fontsReady,marks,onPageCount,pageIndex,text,title]);
+  useEffect(()=>{const preview=canvasRef.current;if(!preview)return;const canvases=createDocumentCanvases({text,title,appearance,marks,drawings});const selected=canvases[Math.min(pageIndex,canvases.length-1)];if(!selected)return;preview.width=selected.width;preview.height=selected.height;preview.style.aspectRatio=selected.style.aspectRatio;const context=preview.getContext("2d");if(!context)return;context.drawImage(selected,0,0);onPageCount?.(canvases.length);},[appearance,canvasRef,drawings,fontsReady,marks,onPageCount,pageIndex,text,title]);
   return <canvas ref={canvasRef} aria-label="Generated handwritten note preview" className="note-canvas" />;
 }
