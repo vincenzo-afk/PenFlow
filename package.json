@@ -1,0 +1,29 @@
+{
+  "name": "penflow",
+  "version": "0.1.0",
+  "description": "PenFlow — Transform typed text into realistic handwritten notebook pages, powered by AI.",
+  "type": "module",
+  "scripts": {
+    "start": "npx serve src",
+    "dev": "npx serve src -l 3000"
+  },
+  "keywords": [
+    "ai",
+    "handwriting",
+    "notes",
+    "ocr",
+    "pdf",
+    "study",
+    "education",
+    "canvas",
+    "paper",
+    "notebook",
+    "document-generator"
+  ],
+  "author": "vincenzo-afk",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vincenzo-afk/PenFlow-.git"
+  }
+}

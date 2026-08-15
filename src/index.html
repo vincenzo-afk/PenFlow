@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PenFlow — Handwritten Notes Generator</title>
+  <link rel="stylesheet" href="style.css" />
+  <!-- Optional: jsPDF for multipage PDF export, Tesseract for OCR -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+  <header class="pf-header">
+    <h1>🖊️ PenFlow</h1>
+    <p>Transform typed text into realistic handwritten notebook pages.</p>
+  </header>
+
+  <main id="editor-root"></main>
+
+  <footer class="pf-footer">
+    PenFlow — MIT License · Built with a procedural handwriting engine, not just fonts.
+  </footer>
+
+  <script type="module">
+    import { PenFlowEditor } from "./ui/editor.js";
+    new PenFlowEditor("#editor-root");
+  </script>
+</body>
+</html>
