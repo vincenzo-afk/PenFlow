@@ -5,7 +5,7 @@
 import { useEffect, useState } from "react";
 import type { RefObject } from "react";
 import { DEFAULT_APPEARANCE, mergeAppearance, type DocumentAppearance, type HandwritingStyle, type PaperKind, type TextMark } from "@/lib/appearance";
-import { drawStroke, type InkStroke } from "@/lib/drawing";
+import { drawStroke, drawStrokesAtProgress, type InkStroke } from "@/lib/drawing";
 
 export type { HandwritingStyle, PaperKind } from "@/lib/appearance";
 export type InkColor = "indigo" | "black" | "vermilion" | "forest";
@@ -31,8 +31,8 @@ type RandomState = { value: number };
 type DisplayLine = { content: string; kind: "heading" | "body" | "bullet" | "spacer"; indent: number };
 type RenderInput = { text: string; title: string; appearance: DocumentAppearance; marks: TextMark[]; drawings?: Record<number, InkStroke[]> };
 
-const PAGE_WIDTH = 760;
-const PAGE_HEIGHT = 1074;
+export const PAGE_WIDTH = 760;
+export const PAGE_HEIGHT = 1074;
 const inkMap: Record<InkColor, string> = { indigo: "#1b3d81", black: "#1d222b", vermilion: "#b94232", forest: "#1e6046" };
 const paperFill: Record<DocumentAppearance["paper"]["shade"], string> = { ivory: "#fffdf7", white: "#fffefd", cream: "#f9f1dc", blue: "#f2f7fc", recycled: "#efe5ce" };
 
@@ -211,6 +211,18 @@ function renderPage(canvas: HTMLCanvasElement, lines: DisplayLine[], pageNumber:
 
 export function createDocumentCanvases(input: RenderInput) {
   const measure=document.createElement("canvas");const context=measure.getContext("2d");if(!context)return[];const family=familyFor(input.appearance.handwriting.style);context.font=`${input.appearance.handwriting.size}px ${family}`;const lines=splitLines(input.text||"Begin writing in the editor to make your first paper.",context,PAGE_WIDTH-178,input.appearance);const pages=paginate(lines,input.appearance);const results:HTMLCanvasElement[]=[];for(let index=0;index<pages.length;index+=1){const canvas=document.createElement("canvas");renderPage(canvas,pages[index],index,pages.length,input);results.push(canvas);}return results;
+}
+
+export function createReplayPageCanvas(input: RenderInput, pageIndex = 0, replayProgress = 1) {
+  const backgroundPages = createDocumentCanvases({ ...input, drawings: {} });
+  const background = backgroundPages[Math.min(pageIndex, backgroundPages.length - 1)];
+  if (!background) return null;
+  const canvas = document.createElement("canvas"); canvas.width = background.width; canvas.height = background.height; canvas.style.aspectRatio = background.style.aspectRatio;
+  const context = canvas.getContext("2d"); if (!context) return null;
+  context.drawImage(background, 0, 0);
+  const ratio = background.width / PAGE_WIDTH; context.setTransform(ratio, 0, 0, ratio, 0, 0);
+  drawStrokesAtProgress(context, input.drawings?.[pageIndex] ?? [], replayProgress);
+  return canvas;
 }
 
 export function HandwritingCanvas(props: HandwritingCanvasProps) {

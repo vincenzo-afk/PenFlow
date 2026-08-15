@@ -15,6 +15,8 @@ PenFlow is a browser-first handwriting notes studio. It converts your source tex
 | **Pressure-aware direct ink** | Draw directly onto any generated page with a mouse, touch input, or compatible stylus. Pen, highlighter, and eraser modes retain stroke pressure, size, ink opacity, and order as an editable local ink layer. |
 | **Stroke replay** | Replay the active page’s recorded ink strokes from first mark to last, then export the completed direct-ink layer with the handwritten document. |
 | **Local writing calibration** | Capture a guided handwritten sample and derive a reusable visual writing profile from pressure, pace, slant, scale, spacing, baseline drift, and tremor. The profile updates PenFlow’s editable appearance controls without uploading the sample. |
+| **Live profile proof** | Shows the generated visual writing profile on a reference sheet while the user is still writing the sample. The sheet is unchanged until the user explicitly applies the preview; profiles may also be saved without applying them. |
+| **Replay sharing** | Turns the active page’s saved direct-ink timeline into a shareable animated GIF. Where the browser provides `MediaRecorder` support, it can also export a local MP4 or WebM replay and explains the available format in the interface. |
 | **Writing profiles** | Apply built-in writing identities or save local custom pen-and-paper profiles for later pages. Appearance history supports Undo and Redo. |
 | **Study shaping** | Restructures imported or pasted material into concise headings and revision bullets directly in the browser. |
 | **OCR import** | Reads JPG and PNG page scans using Tesseract.js in the browser. Text and Markdown files can also be imported. |
@@ -37,7 +39,7 @@ pnpm build
 
 ## Technical approach
 
-PenFlow is a React 19 + TypeScript + Vite application. The visual page is drawn with the Canvas API, so handwriting, paper grain, margin rules, correction marks, binding details, direct ink, and the folded page corner are rendered locally. The `DocumentAppearance` model keeps every pen, handwriting, humanization, paper, and correction setting together, while the local drawing model keeps editable pointer samples and calibrated writing profiles in browser storage. The app loads Tesseract.js and jsPDF from trusted CDN scripts for optional OCR and PDF export.
+PenFlow is a React 19 + TypeScript + Vite application. The visual page is drawn with the Canvas API, so handwriting, paper grain, margin rules, correction marks, binding details, direct ink, and the folded page corner are rendered locally. The `DocumentAppearance` model keeps every pen, handwriting, humanization, paper, and correction setting together, while the local drawing model keeps editable pointer samples, provisional calibration previews, calibrated writing profiles, and deterministic replay timing in browser storage. The app uses `gifenc` for browser-local animated GIF encoding and browser media recording for optional local replay video exports.
 
 ## Repository topics
 
@@ -45,6 +47,6 @@ PenFlow is a React 19 + TypeScript + Vite application. The visual page is drawn 
 
 ## Privacy note
 
-Writing, study shaping, preview generation, local-library storage, and exports remain in the browser. OCR processes selected images in the browser through Tesseract.js.
+Writing, study shaping, preview generation, local-library storage, calibration, and replay exports remain in the browser. OCR processes selected images in the browser through Tesseract.js. Replay media is created from the active sheet’s direct-ink strokes only and is downloaded to the device; it is not uploaded by PenFlow.
 
 > **Calibration scope:** PenFlow derives an editable *visual writing profile* from the motion and pressure traits in a voluntary sample. It does not identify a person, create a biometric identity, or claim to reproduce exact personal letterforms.

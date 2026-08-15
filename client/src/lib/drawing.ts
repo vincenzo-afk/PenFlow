@@ -30,6 +30,13 @@ export type HandwritingProfile = {
   sample: InkStroke[];
 };
 
+export type ProfilePreviewTraits = {
+  pressure: string;
+  movement: string;
+  slant: string;
+  rhythm: string;
+};
+
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const distance = (a: InkPoint, b: InkPoint) => Math.hypot(b.x - a.x, b.y - a.y);
 const average = (values: number[]) => values.length ? values.reduce((total, value) => total + value, 0) / values.length : 0;
@@ -56,7 +63,25 @@ export function drawLayers(context: CanvasRenderingContext2D, layers: DrawingLay
   for (const stroke of strokes) { if (remaining <= 0) break; const limit = Math.min(stroke.points.length, remaining); drawStroke(context, stroke, limit); remaining -= limit; }
 }
 
-export function profileFromStrokes(label: string, strokes: InkStroke[]): HandwritingProfile {
+export function drawStrokesAtProgress(context: CanvasRenderingContext2D, strokes: InkStroke[], progress = 1) {
+  const points = strokes.flatMap((stroke) => stroke.points);
+  if (!points.length) return;
+  const ordered = points.map((point) => point.time).filter(Number.isFinite);
+  const start = Math.min(...ordered); const end = Math.max(...ordered); const target = start + (end - start) * clamp(progress, 0, 1);
+  for (const stroke of strokes) {
+    const limit = end === start ? Math.ceil(stroke.points.length * progress) : stroke.points.findIndex((point) => point.time > target);
+    const visible = limit === -1 ? stroke.points.length : limit;
+    if (visible > 0) drawStroke(context, stroke, visible);
+  }
+}
+
+export function replayDuration(strokes: InkStroke[]) {
+  const values = strokes.flatMap((stroke) => stroke.points.map((point) => point.time)).filter(Number.isFinite);
+  if (values.length < 2) return 1400;
+  return clamp(Math.max(...values) - Math.min(...values), 900, 9000);
+}
+
+export function profileFromStrokes(label: string, strokes: InkStroke[], identity: Partial<Pick<HandwritingProfile, "id" | "createdAt">> = {}): HandwritingProfile {
   const points = strokes.flatMap((stroke) => stroke.points); const pressures = points.map((point) => point.pressure || .5); const pressureAverage = average(pressures) || .5;
   const pressureVariation = Math.sqrt(average(pressures.map((pressure) => (pressure - pressureAverage) ** 2)));
   const velocities: number[] = []; const directionalChanges: number[] = []; const heights: number[] = []; const gaps: number[] = []; const slants: number[] = [];
@@ -86,15 +111,30 @@ export function profileFromStrokes(label: string, strokes: InkStroke[]): Handwri
     baselineDrift: clamp(baselineDrift / 12, .12, 1.5),
     tremor: clamp(average(directionalChanges) * .22, .08, 1.25),
   };
-  return { id: crypto.randomUUID(), label, createdAt: new Date().toISOString(), metrics, sample: strokes };
+  return { id: identity.id ?? crypto.randomUUID(), label, createdAt: identity.createdAt ?? new Date().toISOString(), metrics, sample: strokes };
 }
 
-export function appearanceFromProfile(profile: HandwritingProfile, base: DocumentAppearance): DocumentAppearance {
+const stableProfileSeed = (profile: HandwritingProfile) => {
+  const source = `${profile.label}/${profile.metrics.averagePressure.toFixed(3)}/${profile.metrics.averageSpeed.toFixed(3)}/${profile.metrics.slant.toFixed(3)}/${profile.metrics.tremor.toFixed(3)}`;
+  return Array.from(source).reduce((total, char) => ((total * 31) + char.charCodeAt(0)) >>> 0, 107);
+};
+
+export function appearanceFromProfile(profile: HandwritingProfile, base: DocumentAppearance, deterministic = false): DocumentAppearance {
   const { metrics } = profile; const next = cloneAppearance(base); const cursive = Math.abs(metrics.slant) > 2.8;
   next.pen.pressure = clamp(metrics.averagePressure, .08, .95); next.pen.flow = clamp(.42 + metrics.averageSpeed * 3.8, .35, .94); next.pen.nib = clamp(1.05 + metrics.averagePressure * .95, 1.0, 2.25); next.pen.slant = metrics.slant;
   next.handwriting.style = cursive ? "cursive" : metrics.averageSpeed > .38 ? "quick" : "scholar"; next.handwriting.size = Math.round(metrics.letterSize); next.handwriting.letterSpacing = clamp(metrics.spacing * .65, -.2, 1.1); next.handwriting.baselineDrift = metrics.baselineDrift; next.handwriting.tremor = metrics.tremor;
-  next.humanize.enabled = true; next.humanize.amount = clamp(.34 + metrics.pressureVariation * 2.6, .34, .86); next.humanize.pauseRate = clamp(.1 + (1 / Math.max(.2, metrics.averageSpeed)) * .03, .12, .38); next.humanize.seed = Math.floor(Math.random() * 999999);
+  next.humanize.enabled = true; next.humanize.amount = clamp(.34 + metrics.pressureVariation * 2.6, .34, .86); next.humanize.pauseRate = clamp(.1 + (1 / Math.max(.2, metrics.averageSpeed)) * .03, .12, .38); next.humanize.seed = deterministic ? stableProfileSeed(profile) : Math.floor(Math.random() * 999999);
   return next;
+}
+
+export function profilePreviewTraits(profile: HandwritingProfile): ProfilePreviewTraits {
+  const metrics = profile.metrics;
+  return {
+    pressure: metrics.averagePressure > .68 ? "firm pressure" : metrics.averagePressure < .36 ? "light pressure" : "steady pressure",
+    movement: metrics.averageSpeed > .5 ? "quick movement" : metrics.averageSpeed < .2 ? "measured movement" : "even movement",
+    slant: metrics.slant > 1.4 ? "right lean" : metrics.slant < -1.4 ? "left lean" : "upright letters",
+    rhythm: metrics.tremor > .72 || metrics.baselineDrift > .8 ? "lively rhythm" : "settled rhythm",
+  };
 }
 
 export const emptyLayer = (pageIndex = 0): DrawingLayer => ({ pageIndex, strokes: [] });
