@@ -1,283 +1,220 @@
 /**
- * Field Notebook Atelier component: the generated paper remains the focal point;
- * warm ruled stock, indigo ink, and a restrained vermilion margin create PenFlow's tactile editor identity.
+ * Field Notebook Atelier renderer: text stays semantic while page, pen, imperfection,
+ * correction, and annotation layers are drawn locally into one or more paper canvases.
  */
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import type { RefObject } from "react";
+import { DEFAULT_APPEARANCE, mergeAppearance, type DocumentAppearance, type HandwritingStyle, type PaperKind, type TextMark } from "@/lib/appearance";
 
-export type PaperKind = "ruled" | "graph" | "dot" | "blank";
-export type HandwritingStyle = "scholar" | "quick" | "cursive" | "blueprint";
+export type { HandwritingStyle, PaperKind } from "@/lib/appearance";
 export type InkColor = "indigo" | "black" | "vermilion" | "forest";
 
 type HandwritingCanvasProps = {
   text: string;
   title: string;
-  paper: PaperKind;
-  handwriting: HandwritingStyle;
-  ink: InkColor;
-  thickness: number;
-  realism: boolean;
-  canvasRef: React.RefObject<HTMLCanvasElement | null>;
+  appearance?: DocumentAppearance;
+  marks?: TextMark[];
+  pageIndex?: number;
+  canvasRef: RefObject<HTMLCanvasElement | null>;
+  onPageCount?: (count: number) => void;
+  /* Legacy props keep older notes/components compatible while the studio is upgraded. */
+  paper?: PaperKind;
+  handwriting?: HandwritingStyle;
+  ink?: InkColor;
+  thickness?: number;
+  realism?: boolean;
 };
 
-const inkMap: Record<InkColor, string> = {
-  indigo: "#1b3d81",
-  black: "#1d222b",
-  vermilion: "#b94232",
-  forest: "#1e6046",
-};
+type RandomState = { value: number };
+type DisplayLine = { content: string; kind: "heading" | "body" | "bullet" | "spacer"; indent: number };
+type RenderInput = { text: string; title: string; appearance: DocumentAppearance; marks: TextMark[] };
+
+const PAGE_WIDTH = 760;
+const PAGE_HEIGHT = 1074;
+const inkMap: Record<InkColor, string> = { indigo: "#1b3d81", black: "#1d222b", vermilion: "#b94232", forest: "#1e6046" };
+const paperFill: Record<DocumentAppearance["paper"]["shade"], string> = { ivory: "#fffdf7", white: "#fffefd", cream: "#f9f1dc", blue: "#f2f7fc", recycled: "#efe5ce" };
 
 const hash = (input: string) => {
   let total = 981723;
-  for (let index = 0; index < input.length; index += 1) {
-    total = ((total << 5) - total + input.charCodeAt(index)) | 0;
-  }
+  for (let index = 0; index < input.length; index += 1) total = ((total << 5) - total + input.charCodeAt(index)) | 0;
   return total;
 };
+const random = (state: RandomState) => { state.value = (state.value * 1664525 + 1013904223) >>> 0; return state.value / 4294967296; };
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-const nextRandom = (state: { value: number }) => {
-  state.value = (state.value * 1664525 + 1013904223) >>> 0;
-  return state.value / 4294967296;
+const legacyAppearance = (props: HandwritingCanvasProps) => mergeAppearance({
+  pen: { ...DEFAULT_APPEARANCE.pen, color: props.ink ? inkMap[props.ink] : DEFAULT_APPEARANCE.pen.color, nib: props.thickness ?? DEFAULT_APPEARANCE.pen.nib },
+  handwriting: { ...DEFAULT_APPEARANCE.handwriting, style: props.handwriting ?? DEFAULT_APPEARANCE.handwriting.style },
+  paper: { ...DEFAULT_APPEARANCE.paper, kind: props.paper ?? DEFAULT_APPEARANCE.paper.kind },
+  humanize: { ...DEFAULT_APPEARANCE.humanize, enabled: props.realism ?? DEFAULT_APPEARANCE.humanize.enabled },
+});
+
+const familyFor = (style: HandwritingStyle) => {
+  if (style === "blueprint") return "'DM Mono', monospace";
+  if (style === "cursive") return "'Caveat', cursive";
+  if (style === "rounded") return "'Kalam', cursive";
+  if (style === "caps") return "'DM Mono', monospace";
+  return "'Kalam', cursive";
 };
 
-function writeCharacter(
-  ctx: CanvasRenderingContext2D,
-  character: string,
-  x: number,
-  y: number,
-  fontSize: number,
-  style: HandwritingStyle,
-  random: { value: number },
-  thickness: number,
-  color: string,
-) {
-  const variation = style === "quick" ? 1.2 : style === "cursive" ? 0.85 : 0.52;
-  const baseline = (nextRandom(random) - 0.5) * variation * 2;
-  const tilt = (nextRandom(random) - 0.5) * variation * 0.033;
-  const scaleY = 0.97 + nextRandom(random) * 0.065;
-  const scaleX = 0.985 + nextRandom(random) * 0.045;
+const normalizeContent = (content: string, capitals: DocumentAppearance["handwriting"]["capitals"]) => {
+  if (capitals === "upper") return content.toUpperCase();
+  if (capitals === "sentence") return content.replace(/(^|[.!?]\s+)([a-z])/g, (_match, lead, letter) => `${lead}${letter.toUpperCase()}`);
+  return content;
+};
+
+function writeCharacter(ctx: CanvasRenderingContext2D, char: string, x: number, y: number, size: number, appearance: DocumentAppearance, rng: RandomState) {
+  const { pen, handwriting, humanize } = appearance;
+  const human = humanize.enabled && !humanize.cleanView ? humanize.amount : 0;
+  const variation = (handwriting.baselineDrift + handwriting.tremor) * (0.2 + human);
+  const baseline = (random(rng) - .5) * variation * 3.2;
+  const tilt = (pen.slant * Math.PI / 180) + (random(rng) - .5) * (handwriting.tremor + human) * .025;
+  const scaleX = 1 + (random(rng) - .5) * (0.025 + human * .06);
+  const scaleY = 1 + (random(rng) - .5) * (0.018 + human * .05);
+  const pressure = 1 + (random(rng) - .5) * pen.pressure * .17;
+  const alpha = clamp(pen.opacity * (.86 + random(rng) * .14) * (.74 + pen.flow * .26), .16, 1);
 
   ctx.save();
   ctx.translate(x, y + baseline);
   ctx.rotate(tilt);
   ctx.scale(scaleX, scaleY);
-  ctx.fillStyle = color;
-  ctx.globalAlpha = 0.87 + nextRandom(random) * 0.1;
-  ctx.fillText(character, 0, 0);
-  if (thickness > 1.7 && character.trim()) {
-    ctx.globalAlpha = 0.11 + thickness * 0.025;
-    ctx.fillText(character, 0.48, 0.24);
+  ctx.fillStyle = pen.color;
+  ctx.globalAlpha = alpha;
+  if (pen.bleed > .01) { ctx.shadowColor = pen.color; ctx.shadowBlur = pen.bleed * 2.5; }
+  ctx.fillText(char, 0, 0);
+  if (pen.kind === "fountain" || pen.kind === "felt" || pen.nib > 1.65) {
+    ctx.globalAlpha = clamp(alpha * (.12 + pen.pressure * .14), .04, .26);
+    ctx.fillText(char, .25 * pressure, .14 * pressure);
+  }
+  if (pen.kind === "pencil") {
+    ctx.globalAlpha = .14 + random(rng) * .12;
+    ctx.fillText(char, -.34, .18);
   }
   ctx.restore();
 }
 
-function drawPaper(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  paper: PaperKind,
-  random: { value: number },
-  realism: boolean,
-) {
-  ctx.fillStyle = "#fffdf7";
+function drawPaper(ctx: CanvasRenderingContext2D, width: number, height: number, appearance: DocumentAppearance, rng: RandomState) {
+  const { paper } = appearance;
+  ctx.fillStyle = paperFill[paper.shade];
   ctx.fillRect(0, 0, width, height);
 
+  const grainCount = Math.round(160 + paper.texture * 1500);
   ctx.save();
-  ctx.globalAlpha = 0.048;
-  for (let index = 0; index < 1550; index += 1) {
-    const x = nextRandom(random) * width;
-    const y = nextRandom(random) * height;
-    const shade = 181 + Math.round(nextRandom(random) * 35);
-    ctx.fillStyle = `rgb(${shade}, ${shade - 8}, ${shade - 25})`;
-    ctx.fillRect(x, y, nextRandom(random) * 1.3, nextRandom(random) * 1.3);
+  ctx.globalAlpha = .015 + paper.texture * .055;
+  for (let index = 0; index < grainCount; index += 1) {
+    const x = random(rng) * width; const y = random(rng) * height; const shade = 164 + Math.round(random(rng) * 55);
+    ctx.fillStyle = `rgb(${shade}, ${Math.max(0, shade - 8)}, ${Math.max(0, shade - 23)})`;
+    ctx.fillRect(x, y, random(rng) * 1.1, random(rng) * 1.1);
   }
   ctx.restore();
 
-  if (paper !== "blank") {
-    ctx.save();
-    ctx.strokeStyle = paper === "dot" ? "rgba(113,142,173,.35)" : "rgba(124,163,205,.40)";
-    ctx.lineWidth = 0.8;
-    const step = paper === "graph" ? 26 : paper === "dot" ? 22 : 33;
-
-    if (paper === "dot") {
-      for (let y = 112; y < height - 65; y += step) {
-        for (let x = 82; x < width - 55; x += step) {
-          ctx.beginPath();
-          ctx.arc(x, y, 0.9, 0, Math.PI * 2);
-          ctx.fillStyle = "rgba(124,163,205,.45)";
-          ctx.fill();
-        }
-      }
-    } else {
-      for (let y = 112; y < height - 65; y += step) {
-        ctx.beginPath();
-        ctx.moveTo(58, y);
-        ctx.lineTo(width - 48, y);
-        ctx.stroke();
-      }
-      if (paper === "graph") {
-        for (let x = 82; x < width - 48; x += step) {
-          ctx.beginPath();
-          ctx.moveTo(x, 68);
-          ctx.lineTo(x, height - 65);
-          ctx.stroke();
-        }
-      }
-    }
-    ctx.restore();
+  const bodyTop = 114; const bodyBottom = height - 67; const left = paper.binding === "spiral" ? 90 : 58; const right = width - 48;
+  const lineColor = paper.ruleColor; const rule = paper.ruleWeight;
+  ctx.save(); ctx.strokeStyle = lineColor; ctx.globalAlpha = .42; ctx.lineWidth = rule;
+  const kind = paper.kind;
+  const horizontalStep = kind === "narrow" ? 25 : 33;
+  if (kind === "dot") {
+    for (let y = bodyTop; y < bodyBottom; y += 22) for (let x = left + 25; x < right; x += 22) { ctx.beginPath(); ctx.arc(x, y, .8, 0, Math.PI * 2); ctx.fillStyle = lineColor; ctx.fill(); }
+  } else if (kind === "music") {
+    for (let y = bodyTop; y < bodyBottom; y += 92) for (let line = 0; line < 5; line += 1) { ctx.beginPath(); ctx.moveTo(left, y + line * 8); ctx.lineTo(right, y + line * 8); ctx.stroke(); }
+  } else if (kind !== "blank" && kind !== "flashcard") {
+    const step = kind === "graph" ? 26 : horizontalStep;
+    for (let y = bodyTop; y < bodyBottom; y += step) { ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke(); }
+    if (kind === "graph") for (let x = left; x < right; x += 26) { ctx.beginPath(); ctx.moveTo(x, 68); ctx.lineTo(x, bodyBottom); ctx.stroke(); }
   }
-
-  ctx.save();
-  ctx.strokeStyle = "rgba(216,74,56,.60)";
-  ctx.lineWidth = 1.25;
-  ctx.beginPath();
-  ctx.moveTo(88, 67);
-  ctx.lineTo(88, height - 65);
-  ctx.stroke();
+  if (kind === "cornell") { ctx.beginPath(); ctx.moveTo(220, bodyTop); ctx.lineTo(220, bodyBottom); ctx.stroke(); ctx.beginPath(); ctx.moveTo(left, height - 178); ctx.lineTo(right, height - 178); ctx.stroke(); }
+  if (kind === "planner") { for (let y = bodyTop; y < bodyBottom; y += 136) { ctx.strokeRect(left, y, right-left, 112); } }
+  if (kind === "lab") { ctx.strokeRect(left, bodyTop, right-left, bodyBottom-bodyTop); ctx.beginPath(); ctx.moveTo(left + 125, bodyTop); ctx.lineTo(left + 125, bodyBottom); ctx.stroke(); }
+  if (kind === "flashcard") { ctx.globalAlpha = .6; ctx.strokeStyle = "#d94a38"; ctx.strokeRect(88, 160, width - 176, height - 320); }
   ctx.restore();
 
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(width - 44, 0);
-  ctx.lineTo(width, 44);
-  ctx.lineTo(width, 0);
-  ctx.closePath();
-  ctx.fillStyle = "rgba(239,232,219,.96)";
-  ctx.fill();
-  ctx.strokeStyle = "rgba(137,111,82,.22)";
-  ctx.lineWidth = 0.8;
-  ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(width - 44, 0);
-  ctx.lineTo(width - 44, 44);
-  ctx.lineTo(width, 44);
-  ctx.strokeStyle = "rgba(255,255,255,.58)";
-  ctx.stroke();
-  ctx.restore();
-
-  if (realism) {
-    const edge = ctx.createRadialGradient(width / 2, height / 2, width * 0.22, width / 2, height / 2, width * 0.72);
-    edge.addColorStop(0, "rgba(90,65,42,0)");
-    edge.addColorStop(1, "rgba(90,65,42,.11)");
-    ctx.fillStyle = edge;
-    ctx.fillRect(0, 0, width, height);
-    ctx.strokeStyle = "rgba(119,94,68,.075)";
-    ctx.beginPath();
-    ctx.moveTo(30, height * 0.54);
-    ctx.lineTo(width - 32, height * 0.545);
-    ctx.stroke();
+  if (paper.margin !== "none") {
+    const x = paper.margin === "right" ? width - 89 : 88;
+    ctx.save(); ctx.strokeStyle = "rgba(216,74,56,.72)"; ctx.lineWidth = 1.25; ctx.beginPath(); ctx.moveTo(x, 67); ctx.lineTo(x, height - 65); ctx.stroke(); ctx.restore();
   }
+  if (paper.binding === "holes") {
+    ctx.save(); ctx.fillStyle = "rgba(63,57,47,.12)"; for (let y = 142; y < height - 86; y += 112) { ctx.beginPath(); ctx.arc(34, y, 7, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(34, y, 4.2, 0, Math.PI * 2); ctx.fillStyle = paperFill[paper.shade]; ctx.fill(); ctx.fillStyle = "rgba(63,57,47,.12)"; } ctx.restore();
+  }
+  if (paper.binding === "spiral") {
+    ctx.save(); ctx.strokeStyle = "rgba(49,59,72,.35)"; ctx.lineWidth = 1.4; for (let y = 92; y < height - 70; y += 36) { ctx.beginPath(); ctx.arc(57, y, 10, Math.PI*.35, Math.PI*1.65); ctx.stroke(); } ctx.restore();
+  }
+  if (paper.fold) { ctx.save(); ctx.beginPath(); ctx.moveTo(width - 44, 0); ctx.lineTo(width, 44); ctx.lineTo(width, 0); ctx.closePath(); ctx.fillStyle = "rgba(235,228,214,.96)"; ctx.fill(); ctx.strokeStyle = "rgba(137,111,82,.2)"; ctx.stroke(); ctx.restore(); }
+  if (paper.texture > .25) { const edge = ctx.createRadialGradient(width/2,height/2,width*.22,width/2,height/2,width*.72); edge.addColorStop(0,"rgba(90,65,42,0)"); edge.addColorStop(1,`rgba(90,65,42,${paper.texture*.14})`); ctx.fillStyle=edge;ctx.fillRect(0,0,width,height); }
 }
 
-function splitIntoDisplayLines(text: string, ctx: CanvasRenderingContext2D, maxWidth: number, fontSize: number) {
-  const output: Array<{ content: string; kind: "heading" | "body" | "bullet" | "spacer" }> = [];
-  const rawLines = text.split(/\r?\n/);
-  rawLines.forEach((raw) => {
-    const cleaned = raw.trim();
-    if (!cleaned) {
-      output.push({ content: "", kind: "spacer" });
-      return;
+function splitLines(text: string, ctx: CanvasRenderingContext2D, maxWidth: number, appearance: DocumentAppearance): DisplayLine[] {
+  const output: DisplayLine[] = []; const rawLines = text.split(/\r?\n/);
+  for (let rawIndex = 0; rawIndex < rawLines.length; rawIndex += 1) {
+    const clean = rawLines[rawIndex].trim();
+    if (!clean) { output.push({ content: "", kind: "spacer", indent: 0 }); continue; }
+    const heading = clean.startsWith("# ") || (clean === clean.toUpperCase() && clean.length < 48);
+    const bullet = /^[-•*]\s/.test(clean); const content = normalizeContent(clean.replace(/^#\s|^[-•*]\s/, ""), appearance.handwriting.capitals);
+    const kind: DisplayLine["kind"] = heading ? "heading" : bullet ? "bullet" : "body";
+    const words = content.split(/\s+/); let line = bullet ? "• " : "";
+    for (let wordIndex = 0; wordIndex < words.length; wordIndex += 1) {
+      const word = words[wordIndex]; const candidate = line ? `${line}${line === "• " ? "" : " "}${word}` : word;
+      if (ctx.measureText(candidate).width > maxWidth && line.trim() !== "•") { output.push({ content: line, kind, indent: bullet ? 9 : 0 }); line = bullet ? `  ${word}` : word; } else line = candidate;
     }
-    const isHeading = cleaned.startsWith("# ") || cleaned === cleaned.toUpperCase() && cleaned.length < 48;
-    const isBullet = /^[-•*]\s/.test(cleaned);
-    const content = cleaned.replace(/^#\s|^[-•*]\s/, "");
-    const kind = isHeading ? "heading" : isBullet ? "bullet" : "body";
-    const words = content.split(/\s+/);
-    let line = kind === "bullet" ? "• " : "";
-    words.forEach((word) => {
-      const next = line ? `${line}${line === "• " ? "" : " "}${word}` : word;
-      if (ctx.measureText(next).width > maxWidth && line.trim() !== "•") {
-        output.push({ content: line, kind });
-        line = kind === "bullet" ? `  ${word}` : word;
-      } else {
-        line = next;
-      }
-    });
-    if (line) output.push({ content: line, kind });
-  });
+    if (line) output.push({ content: line, kind, indent: bullet ? 9 : 0 });
+  }
   return output;
 }
 
-export function HandwritingCanvas({
-  text,
-  title,
-  paper,
-  handwriting,
-  ink,
-  thickness,
-  realism,
-  canvasRef,
-}: HandwritingCanvasProps) {
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const width = 760;
-    const height = 1074;
-    const ratio = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = width * ratio;
-    canvas.height = height * ratio;
-    canvas.style.aspectRatio = `${width}/${height}`;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+function paginate(lines: DisplayLine[], appearance: DocumentAppearance) {
+  const pages: DisplayLine[][] = [[]]; let cursor = 145; const baseHeight = appearance.handwriting.size * appearance.handwriting.lineHeight;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]; const height = line.kind === "spacer" ? baseHeight*.55 : baseHeight + (line.kind === "heading" ? 9 : 0);
+    if (cursor + height > PAGE_HEIGHT - 78 && pages[pages.length-1].length) { pages.push([]); cursor = 145; }
+    pages[pages.length-1].push(line); cursor += height;
+  }
+  return pages;
+}
 
-    const random = { value: Math.abs(hash(`${title}${text}${paper}${handwriting}${ink}`)) };
-    drawPaper(ctx, width, height, paper, random, realism);
+function drawMark(ctx: CanvasRenderingContext2D, line: DisplayLine, x: number, y: number, size: number, mark: TextMark, appearance: DocumentAppearance, rng: RandomState) {
+  const location = line.content.toLocaleLowerCase().indexOf(mark.target.toLocaleLowerCase()); if (location < 0 || !mark.target) return;
+  const prior = line.content.slice(0, location); const start = x + ctx.measureText(prior).width; const width = Math.max(ctx.measureText(mark.target).width, 14); const color = mark.color || appearance.corrections.color;
+  ctx.save(); ctx.strokeStyle = color; ctx.fillStyle = color; ctx.globalAlpha = .72; ctx.lineWidth = 1.1 + appearance.pen.nib*.18;
+  if (mark.kind === "highlight") { ctx.globalAlpha = .23; ctx.fillRect(start-2,y-size*.72,width+4,size*.88); }
+  if (mark.kind === "underline" || mark.kind === "doubleUnderline") { for (let lineIndex=0; lineIndex<(mark.kind === "doubleUnderline"?2:1); lineIndex+=1){ctx.beginPath();ctx.moveTo(start,y+4+lineIndex*4);ctx.quadraticCurveTo(start+width*.5,y+5+lineIndex*4+(random(rng)-.5)*1.8,start+width,y+4+lineIndex*4);ctx.stroke();} }
+  if (mark.kind === "strike") { ctx.beginPath();ctx.moveTo(start,y-size*.36);ctx.lineTo(start+width,y-size*.43+(random(rng)-.5)*2);ctx.stroke(); }
+  if (mark.kind === "scribble") { for(let scribble=0;scribble<3;scribble+=1){ctx.beginPath();ctx.moveTo(start,y-size*.35+scribble*2); for(let sx=start;sx<start+width;sx+=7){ctx.lineTo(sx+4,y-size*.38+scribble*2+(random(rng)-.5)*7);}ctx.stroke();} }
+  if (mark.kind === "circle") { ctx.beginPath();ctx.ellipse(start+width/2,y-size*.38,width/2+7,size*.7,0,0,Math.PI*2);ctx.stroke(); }
+  if (mark.kind === "bracket") { ctx.beginPath();ctx.moveTo(start-5,y-size*.74);ctx.lineTo(start-9,y-size*.74);ctx.lineTo(start-9,y+5);ctx.lineTo(start-5,y+5);ctx.moveTo(start+width+5,y-size*.74);ctx.lineTo(start+width+9,y-size*.74);ctx.lineTo(start+width+9,y+5);ctx.lineTo(start+width+5,y+5);ctx.stroke(); }
+  if (mark.kind === "arrow") { ctx.beginPath();ctx.moveTo(start+width+32,y-size*.2);ctx.lineTo(start+width+4,y-size*.2);ctx.lineTo(start+width+11,y-size*.45);ctx.moveTo(start+width+4,y-size*.2);ctx.lineTo(start+width+11,y+2);ctx.stroke(); }
+  ctx.restore();
+}
 
-    const date = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(new Date());
-    ctx.fillStyle = "rgba(27,36,50,.56)";
-    ctx.font = "600 11px 'DM Mono', monospace";
-    ctx.fillText(date.toUpperCase(), 109, 50);
-    ctx.textAlign = "right";
-    ctx.fillText("PENFLOW / 01", width - 56, 50);
-    ctx.textAlign = "left";
+function drawCorrections(ctx: CanvasRenderingContext2D, appearance: DocumentAppearance, rng: RandomState, page: number) {
+  const { humanize, corrections, paper } = appearance; if (!humanize.enabled || humanize.cleanView || (humanize.typoRate <= .001 && humanize.repeatRate <= .001)) return;
+  const chance = clamp(humanize.typoRate + humanize.repeatRate, 0, .11); if (random(rng) > chance * 5 || page > 0) return;
+  const y = 210 + random(rng)*230; const x = paper.margin === "left" ? 115 + random(rng)*180 : 90 + random(rng)*200; const width = 35 + random(rng)*70;
+  ctx.save();ctx.strokeStyle=corrections.color;ctx.globalAlpha=corrections.opacity;ctx.lineWidth=1.2;
+  if(corrections.kind === "scribble"){for(let line=0;line<3;line+=1){ctx.beginPath();ctx.moveTo(x,y+line*3);ctx.lineTo(x+width,y+(random(rng)-.5)*7);ctx.stroke();}}
+  else if(corrections.kind === "double"){for(let line=0;line<2;line+=1){ctx.beginPath();ctx.moveTo(x,y+line*4);ctx.lineTo(x+width,y-3+line*4);ctx.stroke();}}
+  else if(corrections.kind === "whiteout"){ctx.fillStyle="#fffdf7";ctx.globalAlpha=.9;ctx.fillRect(x,y-15,width,18);}
+  else if(corrections.kind === "caret"){ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+5,y-10);ctx.lineTo(x+10,y);ctx.stroke();}
+  else if(corrections.kind === "margin"){ctx.beginPath();ctx.moveTo(92,y-17);ctx.lineTo(x,y-17);ctx.stroke();ctx.font="12px 'Kalam',cursive";ctx.fillStyle=corrections.color;ctx.fillText("rev",96,y-22);}
+  else {ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+width,y-3);ctx.stroke();}ctx.restore();
+}
 
-    const titleFont = handwriting === "blueprint" ? "600 23px 'DM Mono', monospace" : "600 29px 'Kalam', cursive";
-    ctx.font = titleFont;
-    ctx.fillStyle = inkMap[ink];
-    ctx.fillText(title || "Untitled note", 108, 93);
-    ctx.strokeStyle = "rgba(216,74,56,.55)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(108, 102);
-    ctx.lineTo(width - 58, 102);
-    ctx.stroke();
+function renderPage(canvas: HTMLCanvasElement, lines: DisplayLine[], pageNumber: number, total: number, input: RenderInput) {
+  const ratio = Math.min(window.devicePixelRatio || 1, 2); canvas.width = PAGE_WIDTH*ratio; canvas.height=PAGE_HEIGHT*ratio; canvas.style.aspectRatio=`${PAGE_WIDTH}/${PAGE_HEIGHT}`;
+  const ctx=canvas.getContext("2d");if(!ctx)return;ctx.setTransform(ratio,0,0,ratio,0,0);
+  const rng:RandomState={value:Math.abs(hash(`${input.title}/${input.text}/${JSON.stringify(input.appearance)}/${pageNumber}`))}; drawPaper(ctx,PAGE_WIDTH,PAGE_HEIGHT,input.appearance,rng);
+  const date=new Intl.DateTimeFormat("en",{month:"short",day:"numeric",year:"numeric"}).format(new Date());ctx.fillStyle="rgba(27,36,50,.56)";ctx.font="600 11px 'DM Mono',monospace";ctx.fillText(date.toUpperCase(),109,50);ctx.textAlign="right";ctx.fillText(`PENFLOW / ${String(pageNumber+1).padStart(2,"0")}`,PAGE_WIDTH-56,50);ctx.textAlign="left";
+  const appearance=input.appearance;const style=appearance.handwriting.style;const family=familyFor(style);const titleFont=style==="blueprint"||style==="caps"?"600 22px 'DM Mono',monospace":"600 29px 'Kalam',cursive";ctx.font=titleFont;ctx.fillStyle=appearance.pen.color;ctx.fillText(pageNumber?`${input.title} — continued`:input.title||"Untitled note",109,93);ctx.strokeStyle="rgba(216,74,56,.55)";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(109,102);ctx.lineTo(PAGE_WIDTH-58,102);ctx.stroke();
+  let y=145;const baseSize=appearance.handwriting.size;const baseHeight=baseSize*appearance.handwriting.lineHeight;for(let index=0;index<lines.length;index+=1){const line=lines[index];if(line.kind==="spacer"){y+=baseHeight*.55;continue;}const size=line.kind==="heading"?baseSize+5:baseSize;ctx.font=`${line.kind==="heading"?"600":"400"} ${size}px ${family}`;const left=appearance.paper.margin==="left"?109:75;let x=left+line.indent;const content=normalizeContent(line.content,appearance.handwriting.capitals);for(let charIndex=0;charIndex<content.length;charIndex+=1){const char=content.charAt(charIndex);const charWidth=ctx.measureText(char).width;if(char===" "){x+=charWidth*(.9+appearance.handwriting.wordSpacing*.12+(random(rng)-.5)*.11);}else{writeCharacter(ctx,char,x,y,size,appearance,rng);x+=charWidth*(.92+appearance.handwriting.letterSpacing*.035+(random(rng)-.5)*(appearance.humanize.enabled&&!appearance.humanize.cleanView?appearance.humanize.amount*.09:.02));}}for(let markIndex=0;markIndex<input.marks.length;markIndex+=1)drawMark(ctx,{...line,content},left+line.indent,y,size,input.marks[markIndex],appearance,rng);y+=baseHeight+(line.kind==="heading"?9:0);}
+  drawCorrections(ctx,appearance,rng,pageNumber);ctx.save();ctx.fillStyle="rgba(27,36,50,.4)";ctx.font="10px 'DM Mono',monospace";ctx.fillText("PENFLOW / MADE FOR REVISION",109,PAGE_HEIGHT-38);ctx.textAlign="right";ctx.fillText(`${pageNumber+1} / ${total}`,PAGE_WIDTH-56,PAGE_HEIGHT-38);ctx.restore();
+}
 
-    const family = handwriting === "blueprint" ? "'DM Mono', monospace" : handwriting === "cursive" ? "'Caveat', cursive" : "'Kalam', cursive";
-    const fontSize = handwriting === "quick" ? 24 : handwriting === "cursive" ? 27 : handwriting === "blueprint" ? 18 : 23;
-    ctx.font = `${fontSize}px ${family}`;
-    const lines = splitIntoDisplayLines(text || "Begin writing in the editor to make your first paper.", ctx, width - 178, fontSize);
-    let y = 145;
-    const lineHeight = handwriting === "quick" ? 31 : 34;
+export function createDocumentCanvases(input: RenderInput) {
+  const measure=document.createElement("canvas");const context=measure.getContext("2d");if(!context)return[];const family=familyFor(input.appearance.handwriting.style);context.font=`${input.appearance.handwriting.size}px ${family}`;const lines=splitLines(input.text||"Begin writing in the editor to make your first paper.",context,PAGE_WIDTH-178,input.appearance);const pages=paginate(lines,input.appearance);const results:HTMLCanvasElement[]=[];for(let index=0;index<pages.length;index+=1){const canvas=document.createElement("canvas");renderPage(canvas,pages[index],index,pages.length,input);results.push(canvas);}return results;
+}
 
-    for (const line of lines) {
-      if (y > height - 72) break;
-      if (line.kind === "spacer") {
-        y += lineHeight * 0.55;
-        continue;
-      }
-      const size = line.kind === "heading" ? fontSize + 5 : fontSize;
-      ctx.font = `${line.kind === "heading" ? "600" : "400"} ${size}px ${family}`;
-      let x = line.kind === "bullet" ? 115 : 109;
-      for (const character of line.content) {
-        const charWidth = ctx.measureText(character).width;
-        if (character === " ") {
-          x += charWidth * (0.88 + nextRandom(random) * 0.15);
-        } else {
-          writeCharacter(ctx, character, x, y, size, handwriting, random, thickness, inkMap[ink]);
-          x += charWidth * (0.91 + nextRandom(random) * 0.1);
-        }
-      }
-      y += lineHeight + (line.kind === "heading" ? 7 : 0);
-    }
-
-    ctx.save();
-    ctx.fillStyle = "rgba(27,36,50,.40)";
-    ctx.font = "10px 'DM Mono', monospace";
-    ctx.fillText("PENFLOW / MADE FOR REVISION", 109, height - 38);
-    ctx.textAlign = "right";
-    ctx.fillText("Generated locally", width - 56, height - 38);
-    ctx.restore();
-  }, [canvasRef, handwriting, ink, paper, realism, text, thickness, title]);
-
+export function HandwritingCanvas(props: HandwritingCanvasProps) {
+  const { canvasRef, text, title, marks = [], pageIndex = 0, onPageCount } = props; const appearance = props.appearance ?? legacyAppearance(props);
+  const [fontsReady, setFontsReady] = useState(false);
+  useEffect(() => { let active = true; document.fonts?.ready.then(() => { if (active) setFontsReady(true); }); return () => { active = false; }; }, []);
+  useEffect(()=>{const preview=canvasRef.current;if(!preview)return;const canvases=createDocumentCanvases({text,title,appearance,marks});const selected=canvases[Math.min(pageIndex,canvases.length-1)];if(!selected)return;preview.width=selected.width;preview.height=selected.height;preview.style.aspectRatio=selected.style.aspectRatio;const context=preview.getContext("2d");if(!context)return;context.drawImage(selected,0,0);onPageCount?.(canvases.length);},[appearance,canvasRef,fontsReady,marks,onPageCount,pageIndex,text,title]);
   return <canvas ref={canvasRef} aria-label="Generated handwritten note preview" className="note-canvas" />;
 }

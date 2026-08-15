@@ -68,3 +68,5 @@ The mark is a bold, angular folded-paper glyph cut by a single indigo ink stroke
 - The dark vertical utility rail remains PenFlow’s primary structural spine at every desktop size; it must not be replaced by top navigation.
 - PenFlow is presented as a publisher-imprint-style wordmark alongside the folded-paper glyph, using high-contrast serif “Pen” and mono “Flow” rather than generic product text.
 - Margin Vermilion `#D94A38` is the recurring editorial rule for active states, workflow progress, annotations, and deliberate emphasis.
+- Generated sheets privilege visible hand-produced signals: custom-loaded handwriting faces, ink variance, baseline rhythm, annotation marks, correction marks, and direct interaction with the ruled stock.
+- Inspector controls use calibration marks, stationery tabs, fine dividers, and small-cap maker language rather than generic dashboard form styling.
