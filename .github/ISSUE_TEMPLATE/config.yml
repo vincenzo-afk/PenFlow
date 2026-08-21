@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security issue
+    url: https://github.com/vincenzo-afk/PenFlow/security
+    about: Please use the repository security area rather than a public issue for vulnerabilities.

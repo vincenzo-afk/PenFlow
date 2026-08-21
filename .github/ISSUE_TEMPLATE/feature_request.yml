@@ -1,0 +1,43 @@
+name: Feature request
+description: Suggest a focused improvement to PenFlow.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the user problem before proposing a solution. Please do not include private handwriting samples or note content.
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: What is difficult or missing today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the smallest useful change and the expected workflow.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Share other approaches or workarounds, if any.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Relevant area
+      options:
+        - Handwriting rendering
+        - Direct ink or stylus input
+        - Calibration or profiles
+        - OCR import
+        - Replay or reel export
+        - Library or local storage
+        - Accessibility or mobile layout
+        - Documentation
+        - Other

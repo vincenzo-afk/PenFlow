@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a reproducible problem in PenFlow.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve PenFlow. Please avoid including personal handwriting samples or private note content.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and the expected result.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Select ...
+        3. Draw or export ...
+        4. Observe ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Handwriting rendering
+        - Direct ink or stylus input
+        - Calibration or profiles
+        - OCR import
+        - Replay or reel export
+        - Library or local storage
+        - Mobile layout
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include browser, operating system, input device, and PenFlow version or commit when available.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots or logs
+      description: Add only redacted evidence. Do not attach private notes or handwriting samples.
